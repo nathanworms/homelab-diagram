@@ -23,18 +23,14 @@ The script behind the network diagram of my homelab that I posted on r/homelab. 
 ## How it works
 
 - `inventory.yaml` holds everything the picture shows: VLANs, devices, switch ports, port forwards, hardware, containers, pools.
-- `build.py` draws the diagram as SVG with hand-placed coordinates, embeds the icons and converts it to PNG with `rsvg-convert`. Text widths for a few labels are measured with Pillow from the real font, so tabs and badges fit their text.
+- `build.py` draws the diagram as SVG with hand-placed coordinates, embeds the icons and converts it to PNG with a Bazel-fetched `resvg` binary using the fonts vendored in `fonts/`. Text widths for a few labels are measured with Pillow from the same fonts, so tabs and badges fit their text.
 - **Redaction:** by default the real domain is replaced with `redacted.com` and SSIDs get generic names, so the PNG can be posted publicly. `bazelisk run //:build -- --unredacted` renders a private version with the real values from `inventory.yaml`.
 
 ## Requirements
 
-- **Bazelisk**; it uses the Bazel version pinned in `.bazelversion` and manages Python dependencies through `rules_python`.
-- **rsvg-convert** (librsvg) for the PNG
-- the fonts **Fira Sans** and **Fira Code** installed (found via fontconfig)
+- **Bazelisk**; it uses the Bazel version pinned in `.bazelversion`, fetches Python dependencies, the PNG renderer and the Fira fonts, and needs no system Python, `rsvg-convert`, fontconfig or installed fonts.
 
-On Arch/CachyOS: `pacman -S bazelisk librsvg ttf-fira-sans ttf-fira-code`
-On Debian/Ubuntu: install Bazelisk, then `apt install librsvg2-bin fonts-firacode` plus Fira Sans
-On macOS: `brew install bazelisk librsvg`, then install the Fira fonts from [mozilla/Fira](https://github.com/mozilla/Fira) (e.g. `brew install --cask font-fira-code font-fira-sans`, if your Homebrew has them).
+No other host tools are required to render the SVG/PNG files.
 
 ## Usage
 
@@ -74,7 +70,7 @@ I had seen these diagrams on r/homelab for years and always wanted one for my ow
 3. **Iterating.** Then it was me giving feedback, Claude changing the code, re-rendering and checking again, about 60 rounds. Most of the design decisions (folder-shaped device cards, line width = speed, CT on top and IP below, no internal ports, …) came out of that back and forth.
 4. **Publishing.** For this repo Claude made a cleaned-up copy (example domain, generic SSIDs), added the icon download script and checked that a fresh clone renders exactly the posted image.
 
-Tools: Claude Code with Claude Opus 5.5, Python, librsvg, Pillow.
+Tools: Claude Code with Claude Opus 5.5, Python, resvg, Pillow and vendored Fira fonts.
 
 ## Example prompts
 
@@ -92,5 +88,6 @@ About 60 prompts went into this. Three typical ones, to give an idea of how the 
 ## Credits & license
 
 - Code and the glyph icons in `icons/`: MIT, see [LICENSE](LICENSE).
-- Service icons: [homarr-labs/dashboard-icons](https://github.com/homarr-labs/dashboard-icons), downloaded by `fetch_icons.py`, not part of this repo. The logos belong to their projects.
-- Fonts: [Fira Sans / Fira Code](https://github.com/mozilla/Fira) (SIL Open Font License), not included.
+- Service icons: [homarr-labs/dashboard-icons](https://github.com/homarr-labs/dashboard-icons), downloaded by `fetch_icons.py` and included in this fork. The logos belong to their projects.
+- PNG renderer: [resvg](https://github.com/linebender/resvg), fetched by Bazel.
+- Fonts: [Fira Sans / Fira Code](https://github.com/google/fonts) (SIL Open Font License), included in `fonts/` with their licenses.

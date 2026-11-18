@@ -2,6 +2,54 @@ load("@rules_python//python:defs.bzl", "py_binary")
 
 package(default_visibility = ["//visibility:public"])
 
+config_setting(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "linux_aarch64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:aarch64",
+    ],
+)
+
+config_setting(
+    name = "macos_x86_64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "macos_aarch64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:aarch64",
+    ],
+)
+
+config_setting(
+    name = "win_x86_64",
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "win_aarch64",
+    constraint_values = [
+        "@platforms//os:windows",
+        "@platforms//cpu:aarch64",
+    ],
+)
+
 py_binary(
     name = "build",
     srcs = ["build.py"],
@@ -9,12 +57,31 @@ py_binary(
     python_version = "3.12",
     legacy_create_init = 0,
     data = glob([
+        "fonts/*",
         "icons/*.svg",
         "inventory.yaml",
-    ]),
+    ]) + select({
+        ":linux_x86_64": ["@resvg_linux_x86_64//:resvg_bin"],
+        ":linux_aarch64": ["@resvg_linux_aarch64//:resvg_bin"],
+        ":macos_x86_64": ["@resvg_macos_x86_64//:resvg_bin"],
+        ":macos_aarch64": ["@resvg_macos_aarch64//:resvg_bin"],
+        ":win_x86_64": ["@resvg_win_x86_64//:resvg_bin"],
+        ":win_aarch64": ["@resvg_win_aarch64//:resvg_bin"],
+        "//conditions:default": [],
+    }),
+    env = select({
+        ":linux_x86_64": {"DIAGRAM_RENDERER_RLPATH": "$(rlocationpath @resvg_linux_x86_64//:resvg_bin)"},
+        ":linux_aarch64": {"DIAGRAM_RENDERER_RLPATH": "$(rlocationpath @resvg_linux_aarch64//:resvg_bin)"},
+        ":macos_x86_64": {"DIAGRAM_RENDERER_RLPATH": "$(rlocationpath @resvg_macos_x86_64//:resvg_bin)"},
+        ":macos_aarch64": {"DIAGRAM_RENDERER_RLPATH": "$(rlocationpath @resvg_macos_aarch64//:resvg_bin)"},
+        ":win_x86_64": {"DIAGRAM_RENDERER_RLPATH": "$(rlocationpath @resvg_win_x86_64//:resvg_bin)"},
+        ":win_aarch64": {"DIAGRAM_RENDERER_RLPATH": "$(rlocationpath @resvg_win_aarch64//:resvg_bin)"},
+        "//conditions:default": {},
+    }),
     deps = [
         "@diagram_pip//pillow",
         "@diagram_pip//pyyaml",
+        "@rules_python//python/runfiles",
     ],
 )
 

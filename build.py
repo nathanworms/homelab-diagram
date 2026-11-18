@@ -13,10 +13,18 @@ import base64
 import html
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 
 import yaml
+
+try:
+    from python.runfiles import runfiles
+
+    RUNFILES = runfiles.Create()
+except Exception:
+    RUNFILES = None
 
 SRC_ROOT = pathlib.Path(__file__).resolve().parent
 WORKSPACE = pathlib.Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY", SRC_ROOT))
@@ -31,7 +39,48 @@ else:
     INV_FILE = SRC_ROOT / "inventory.yaml"
 INV = yaml.safe_load(INV_FILE.read_text())
 ICONS = SRC_ROOT / "icons"
+FONTS = SRC_ROOT / "fonts"
+FONT_FILES = [
+    "FiraSans-Regular.ttf",
+    "FiraSans-Medium.ttf",
+    "FiraSans-SemiBold.ttf",
+    "FiraSans-Bold.ttf",
+    "FiraCode[wght].ttf",
+]
+FONT_WEIGHTS = {
+    700: "FiraSans-Bold.ttf",
+    600: "FiraSans-SemiBold.ttf",
+    500: "FiraSans-Medium.ttf",
+    400: "FiraSans-Regular.ttf",
+}
 OUT = WORKSPACE / "out"
+
+
+def _font_path(name):
+    if RUNFILES is not None:
+        root = pathlib.Path(RUNFILES.CurrentRepository() or "_main")
+        located = RUNFILES.Rlocation(str(root / "fonts" / name))
+        if located:
+            return pathlib.Path(located)
+    return FONTS / name
+
+
+def _renderer_path():
+    rlocation = os.environ.get("DIAGRAM_RENDERER_RLPATH")
+    if rlocation and RUNFILES is not None:
+        located = RUNFILES.Rlocation(rlocation)
+        if located:
+            return located
+    configured = os.environ.get("DIAGRAM_RENDERER")
+    if configured:
+        return configured
+    found = shutil.which("resvg")
+    if found:
+        return found
+    raise SystemExit("resvg renderer not available; run with bazelisk")
+
+
+RENDERER = _renderer_path()
 
 UNREDACTED = "--unredacted" in sys.argv
 RED = INV["redact"]
@@ -86,21 +135,16 @@ def tw(s, size, mono=False):
     return len(sub(s)) * size * (0.6 if mono else 0.53)
 
 
-def _font_file(pattern):
-    """Path of an installed font via fontconfig (fc-match), or None."""
-    try:
-        out = subprocess.run(["fc-match", "-f", "%{file}", pattern], capture_output=True, text=True, timeout=5)
-        return out.stdout.strip() or None
-    except Exception:
-        return None
+def _font_file(weight):
+    path = _font_path(FONT_WEIGHTS[weight])
+    return path if path.exists() else None
 
 
 try:
     from PIL import ImageFont
-    _FONTS = {700: _font_file("Fira Sans:bold"), 600: _font_file("Fira Sans:semibold"),
-              400: _font_file("Fira Sans:regular")}
+    _FONTS = {weight: _font_file(weight) for weight in FONT_WEIGHTS}
     if not all(_FONTS.values()):
-        raise RuntimeError("Fira Sans not found")
+        raise RuntimeError("vendored Fira Sans not found")
     _FCACHE = {}
 
     def measure(s, size, weight=700):
@@ -961,5 +1005,15 @@ name = "homelab-unredacted" if UNREDACTED else "homelab"
 svg_path = OUT / f"{name}.svg"
 svg_path.write_text(S.render())
 png_path = OUT / f"{name}.png"
-subprocess.run(["rsvg-convert", "-z", "1.6", "-o", str(png_path), str(svg_path)], check=True)
+render_cmd = [RENDERER]
+for font_name in FONT_FILES:
+    render_cmd += ["--use-font-file", str(_font_path(font_name))]
+render_cmd += [
+    "--skip-system-fonts",
+    "--font-family", SANS,
+    "--monospace-family", MONO,
+    "-z", "1.6",
+    str(svg_path), str(png_path),
+]
+subprocess.run(render_cmd, check=True)
 print(svg_path, png_path)
