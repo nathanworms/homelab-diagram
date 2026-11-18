@@ -7,7 +7,7 @@ Start by telling the user briefly how this works (interview → inventory → la
 ## How the repo works
 
 - `inventory.yaml` – all content: VLANs, devices, switch ports, port forwards, server hardware, VMs/containers, storage pools, the media pipeline.
-- `build.py` – hand-placed layout. Draws an SVG with absolute coordinates (logical canvas `W = 2400`, height `H`), embeds icons as base64, converts to PNG with `rsvg-convert -z 1.6` (so PNG pixels = SVG units × 1.6).
+- `build.py` – hand-placed layout. Draws an SVG with absolute coordinates (logical canvas `W = 2400`, height `H`), embeds icons as base64, converts to PNG with a Bazel-fetched `resvg` at 1.6 zoom (so PNG pixels = SVG units × 1.6).
 - `fetch_icons.py` – downloads service icons into `icons/` (dashboard-icons). Own glyphs `icons/glyph-*.svg` are in the repo.
 - Output: `out/homelab.png` (redacted, safe to post) and `out/homelab-unredacted.png` (`--unredacted`).
 
@@ -91,7 +91,7 @@ Pool disk groups that don't fit next to each other wrap to a second row; the ass
 
 ## Gotchas
 
-- Fonts: **Fira Sans** and **Fira Code** must be installed, otherwise rsvg falls back and every width calculation is off.
+- Fonts and renderer: **Fira Sans**, **Fira Code** and **resvg** are vendored or Bazel-fetched; no host fontconfig, installed fonts or `rsvg-convert` are needed.
 - jsDelivr sometimes refuses single icons with 403; `fetch_icons.py` falls back to raw GitHub.
 - When content grows, grow the section heights (`ZH`, pool boxes, …); the asserts tell you where. The canvas height follows on its own.
 - `bazelisk run //:build -- --inventory other.yaml` renders a different inventory file, handy for trying changes without touching `inventory.yaml`.
