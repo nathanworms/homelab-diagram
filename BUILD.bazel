@@ -1,0 +1,27 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+py_binary(
+    name = "build",
+    srcs = ["build.py"],
+    main = "build.py",
+    python_version = "3.12",
+    legacy_create_init = 0,
+    data = glob([
+        "icons/*.svg",
+        "inventory.yaml",
+    ]),
+    deps = [
+        "@diagram_pip//pillow",
+        "@diagram_pip//pyyaml",
+    ],
+)
+
+py_binary(
+    name = "fetch_icons",
+    srcs = ["fetch_icons.py"],
+    main = "fetch_icons.py",
+    python_version = "3.12",
+    legacy_create_init = 0,
+)
