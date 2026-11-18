@@ -11,23 +11,27 @@ Written with Claude (Anthropic) in Claude Code, see README.md.
 """
 import base64
 import html
+import os
 import pathlib
 import subprocess
 import sys
 
 import yaml
 
-ROOT = pathlib.Path(__file__).resolve().parent
+SRC_ROOT = pathlib.Path(__file__).resolve().parent
+WORKSPACE = pathlib.Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY", SRC_ROOT))
 if "--inventory" in sys.argv:
     _i = sys.argv.index("--inventory") + 1
     if _i >= len(sys.argv) or sys.argv[_i].startswith("--"):
         raise SystemExit("--inventory needs a file")
     INV_FILE = pathlib.Path(sys.argv[_i])
+    if not INV_FILE.is_absolute() and "BUILD_WORKSPACE_DIRECTORY" in os.environ:
+        INV_FILE = WORKSPACE / INV_FILE
 else:
-    INV_FILE = ROOT / "inventory.yaml"
+    INV_FILE = SRC_ROOT / "inventory.yaml"
 INV = yaml.safe_load(INV_FILE.read_text())
-ICONS = ROOT / "icons"
-OUT = ROOT / "out"
+ICONS = SRC_ROOT / "icons"
+OUT = WORKSPACE / "out"
 
 UNREDACTED = "--unredacted" in sys.argv
 RED = INV["redact"]
@@ -344,7 +348,7 @@ ox, oy, ow, oh = 670, 468, 850, 430         # OPNsense (hardware list left, serv
 bx, by, bw, bh = 620, 990, 1000, 112       # switch
 SB = by + bh
 PX0, PITCH = bx + 320, 58
-ALL_VLANS = ["10", "20", "30", "40", "99"]
+ALL_VLANS = ["1", "20", "30", "40", "50", "60"]
 
 
 N_RJ = sum(1 for p in INV["switch"]["ports"] if not p["name"].startswith("sfpp"))   # RJ45 ports come first
@@ -423,7 +427,7 @@ for i, (lbl, _) in enumerate(FB_PORTS):
 
 # OPNsense card (jacks: em0 on top where the WAN comes in, the dual NIC at the bottom above switch ports 1+2)
 opn = INV["opnsense"]
-device_card(ox, oy, ow, oh, ["opnsense"], opn, C["99"], stroke=TRUNK_BORDER)
+device_card(ox, oy, ow, oh, ["opnsense"], opn, C["1"], stroke=TRUNK_BORDER)
 S.text(ox + 20, oy + 96, "HARDWARE", 11.5, HWC, 700, ls=1.4)
 S.text(916, oy + 96, "SERVICES", 11.5, HWC, 700, ls=1.4)
 for i, hwi in enumerate(opn["hw"]):
@@ -444,27 +448,21 @@ for i, sv in enumerate(opn["services"]):
     S.text(x + 44, y + 22, sv["name"], 14, TEXT, 600)
     S.text(x + 44, y + 39, sv["note"], 11.5, MUTED, 400)
 
-# WAN cable into the onboard port, uplink cables into the dual NIC (cables first, jacks on top)
+# WAN cable into the onboard port, uplink into the 2.5G trunk (cables first, jacks on top)
 S.line([(WANX, fy + fh), (WANX, oy + 30)], C["wan"], SPEED_W["1G"])
-for i in (0, 1):
-    S.trunk([(port_x(i), by), (port_x(i), oy + oh - 20)], sw=trunk_w("2.5G"))
+S.trunk([(port_x(0), by), (port_x(0), oy + oh - 20)], sw=trunk_w("2.5G"))
 jack(WANX - 24, oy + 14, 48, 36, C["wan"] + "55", C["wan"])
 ticks(WANX, oy + 55, untagged="wan")
-S.label(WANX + 6, (fy + fh + oy + 14) / 2 + 4, "1G", C["wan"], 11, anchor="start", mono=True)     # speed tag like the other links
+S.label(WANX + 6, (fy + fh + oy + 14) / 2 + 4, "1G", C["wan"], 11, anchor="start", mono=True)
 S.text(WANX + 32, oy + 38, opn["wan_ip"], 14, C["wan"], 600, mono=True)
-for i in (0, 1):
-    jack(port_x(i) - 24, oy + oh - 46, 48, 36, "#2a3443", TRUNK)
-    if i == 1:                            # OPNsense is .1 in every VLAN on this trunk
-        S.text(port_x(i) + 32, oy + oh - 22, ".1", 14, TRUNK, 600, mono=True)
-    ticks(port_x(i), oy + oh - 51, tagged=ALL_VLANS, up=True)
-lx = (port_x(0) + port_x(1)) / 2
-ly = (oy + oh + by) / 2
-S.add(f'<ellipse cx="{lx}" cy="{ly}" rx="46" ry="12" fill="none" stroke="{TRUNK}" stroke-width="1.4" stroke-dasharray="3 3"/>')
-S.label(lx + 54, ly + 4, "LACP · dual 2.5G", TRUNK, 11, anchor="start", mono=True)
+jack(port_x(0) - 24, oy + oh - 46, 48, 36, "#2a3443", TRUNK)
+S.text(port_x(0) + 32, oy + oh - 22, ".1", 14, TRUNK, 600, mono=True)
+ticks(port_x(0), oy + oh - 51, tagged=ALL_VLANS, up=True)
+S.label(port_x(0) + 54, (oy + oh + by) / 2 + 4, "trunk · ens4f1", TRUNK, 11, anchor="start", mono=True)
 
 # ================================================================ switch
 swc = INV["switch"]
-device_card(bx, by, bw, bh, ["mikrotik-l"], swc, C["99"], fill="#141b25", stroke=TRUNK_BORDER)
+device_card(bx, by, bw, bh, ["unifi"], swc, C["1"], fill="#141b25", stroke=TRUNK_BORDER)
 
 PORTS = {}
 for i, p in enumerate(swc["ports"]):
@@ -530,19 +528,15 @@ for i, s in enumerate(INV["ssids"]):
 device("slzb", ZB)
 
 # links switch → devices; width = negotiated speed (read from the switch 2026-11-07)
-MAD_10G = MAD[0] + tab_width(dev["madcat"]) + 34
-MAD_25G = MAD_10G + 54
-S.line([(PORTS["ether3"], SB), (PORTS["ether3"], SB + 46), (MAD_25G, SB + 46), (MAD_25G, DY)], C["10"], SPEED_W["2.5G"])
+MAD_IN = MAD[0] + tab_width(dev["madcat"]) + 34
+S.line([(PORTS["ether3"], SB), (PORTS["ether3"], SB + 46), (MAD_IN, SB + 46), (MAD_IN, DY)], C["50"], SPEED_W["2.5G"])
 # cables enter the card bodies right of the folder tabs
 KVM_IN = KVM[0] + tab_width(dev["jetkvm"]) + 34
 AP_IN = AP[0] + tab_width(dev["ap"]) + 40
 ZB_IN = ZB[0] + tab_width(dev["slzb"]) + 40
-S.line([(PORTS["ether5"], SB), (PORTS["ether5"], SB + 66), (KVM_IN, SB + 66), (KVM_IN, DY)], C["10"], SPEED_W["100M"])
+S.line([(PORTS["ether5"], SB), (PORTS["ether5"], SB + 66), (KVM_IN, SB + 66), (KVM_IN, DY)], C["1"], SPEED_W["100M"])
 S.trunk([(PORTS["ether6"], SB), (PORTS["ether6"], SB + 86), (AP_IN, SB + 86), (AP_IN, DY)], sw=trunk_w("2.5G"))
-S.line([(PORTS["ether7"], SB), (PORTS["ether7"], SB + 76), (ZB_IN, SB + 76), (ZB_IN, DY)], C["40"], SPEED_W["100M"])
-p10 = [(PORTS["sfpp1"], SB + 5), (PORTS["sfpp1"], SB + 20), (MAD_10G, SB + 20), (MAD_10G, DY)]
-S.line(p10, BG, SPEED_W["10G"] + 8, cap="butt")                      # knock-out: 10G crosses over the others
-S.line([(PORTS["sfpp1"], SB)] + p10[1:], C["10"], SPEED_W["10G"])
+S.line([(PORTS["ether7"], SB), (PORTS["ether7"], SB + 76), (ZB_IN, SB + 76), (ZB_IN, DY)], C["60"], SPEED_W["100M"])
 
 
 def speed_tag(x, y, txt, color, anchor="start"):
@@ -551,11 +545,10 @@ def speed_tag(x, y, txt, color, anchor="start"):
 
 
 ST = DY - 9
-speed_tag(MAD_10G + 8, ST, "10G", C["10"])
-speed_tag(MAD_25G + 6, ST, "2.5G", C["10"])
-speed_tag(KVM_IN + 5, ST, "100M", C["10"])
+speed_tag(MAD_IN + 6, ST, "2.5G", C["50"])
+speed_tag(KVM_IN + 5, ST, "100M", C["1"])
 speed_tag(AP_IN + 8, ST, "2.5G", TRUNK)
-speed_tag(ZB_IN + 5, ST, "100M", C["40"])
+speed_tag(ZB_IN + 5, ST, "100M", C["60"])
 
 # ================================================================ open to the internet (info card, right column, no link)
 ix_, iy_, iw_ = 1790, 262, 570
@@ -563,7 +556,7 @@ pf = INV["port_forwards"]
 ih_ = 84 + len(pf) * 44
 S.rect(ix_, iy_, iw_, ih_, rx=14, fill=PANEL, stroke=BORDER, sw=1.4)
 S.text(ix_ + 20, iy_ + 34, "Open to the internet", 19, TEXT, 600)
-S.text(ix_ + 20, iy_ + 56, "port forwards on OPNsense · blocklist + CrowdSec drop bad IPs first", 12.5, MUTED, 400)
+S.text(ix_ + 20, iy_ + 56, "port forwards on VyOS · zone firewall filters untrusted traffic", 12.5, MUTED, 400)
 for i, r in enumerate(pf):
     y = iy_ + 72 + i * 44
     S.rect(ix_ + 14, y, iw_ - 28, 38, rx=8, fill=CHIP, stroke=BORDER, sw=1)
@@ -575,8 +568,8 @@ for i, r in enumerate(pf):
         px -= S.pill(px, y + 9, pr, PROTO[pr], 11, mono=True, anchor="end", pad=7, h=20) + 6
 
 # ================================================================ legend (left column, under the Networks card)
-LG_ROWS = ["trunk", "access", "wan", "kvm", "net", "speed", "public", "internal", "lan", "ticks", "share"]
-lgx, lgy, lgw = 40, 660, 500
+LG_ROWS = ["trunk", "access", "wan", "net", "speed", "public", "internal", "lan", "ticks", "share"]
+lgx, lgy, lgw = 40, 720, 500
 LR = 27
 lgh = 52 + len(LG_ROWS) * LR + 8
 S.rect(lgx, lgy, lgw, lgh, rx=14, fill=PANEL, stroke=BORDER, sw=1.4)
@@ -588,11 +581,11 @@ for i, k in enumerate(LG_ROWS):
     if k == "trunk":
         S.trunk([(SX, y), (SX + 50, y)], sw=trunk_w("2.5G"), r=0); t = "802.1Q trunk (tagged VLANs)"
     elif k == "access":
-        for jj, c in enumerate(["10", "20", "40", "99"]):
+        for jj, c in enumerate(["1", "20", "40", "60"]):
             S.line([(SX + jj * 13, y), (SX + jj * 13 + 9, y)], C[c], 3.6, r=0, cap="butt")
         t = "access port, colored by VLAN"
     elif k == "wan":
-        S.line([(SX, y), (SX + 50, y)], C["wan"], 3, r=0); t = "WAN (Fritzbox network)"
+        S.line([(SX, y), (SX + 50, y)], C["wan"], 3, r=0); t = "WAN (ISP bridge)"
     elif k == "kvm":
         S.line([(SX, y), (SX + 50, y)], MUTED, 2, dash="5 5", r=0, cap="butt"); t = "KVM console (HDMI + USB)"
     elif k == "net":
@@ -601,22 +594,22 @@ for i, k in enumerate(LG_ROWS):
         S.text(SX, y + 4.5, "line width = speed", 12.5, MUTED, 400)
         x0 = TX
         for lbl in ("10G", "2.5G", "1G", "100M"):
-            S.line([(x0, y), (x0 + 26, y)], C["10"], SPEED_W[lbl], r=0, cap="butt")
+            S.line([(x0, y), (x0 + 26, y)], C["1"], SPEED_W[lbl], r=0, cap="butt")
             S.text(x0 + 32, y + 4.5, lbl, 12, TEXT, 500, mono=True)
             x0 += 32 + tw(lbl, 12, True) + 20
     elif k == "public":
-        S.text(SX, y + 4.5, "app." + SHOWN_DOMAIN, 12, LINK, 500, mono=True); t = "public via Traefik"
+        S.text(SX, y + 4.5, "app." + SHOWN_DOMAIN, 12, LINK, 500, mono=True); t = "public via Gateway API"
     elif k == "internal":
-        S.text(SX, y + 4.5, "name.internal", 12, C["10"], 400, mono=True, op=0.78); t = "local DNS, no Traefik"
+        S.text(SX, y + 4.5, "name.internal", 12, C["1"], 400, mono=True, op=0.78); t = "local DNS, no Traefik"
     elif k == "lan":
         S.pill(SX, y - 9, "LAN", MUTED, 10, mono=True, pad=5); t = "only from LAN / VPN"
     elif k == "ticks":
-        for jj, c in enumerate(["10", "20", "40"]):
+        for jj, c in enumerate(["1", "20", "40"]):
             S.add(f'<rect x="{SX + jj*7}" y="{y-5 if jj == 0 else y-2}" width="5" height="{8 if jj == 0 else 5}" rx="1" fill="{C[c]}"/>')
         t = "port VLANs (tall = untagged)"
     elif k == "share":
-        S.rect(SX, y - 8, 22, 15, rx=3, fill=C["10"] + "16", stroke=C["10"] + "cc", sw=1.2, dash="4 3")
-        t = "TrueNAS share, bind-mounted"
+        S.rect(SX, y - 8, 22, 15, rx=3, fill=C["1"] + "16", stroke=C["1"] + "cc", sw=1.2, dash="4 3")
+        t = "storage share, bind-mounted"
     if t:
         S.text(TX, y + 4.5, t, 13, MUTED, 400)
 
@@ -640,7 +633,7 @@ tx0, ty0, tw0 = 40, 1468, W - 80
 GY = 92           # body starts below the header
 ZH = 712          # body height: hardware list | other-VLAN guests | DMZ zone
 th0 = GY + ZH + 22
-device_card(tx0, ty0, tw0, th0, ["proxmox"], T, C["10"], fill="#0f151e", stroke=TRUNK_BORDER, sw=2)
+device_card(tx0, ty0, tw0, th0, ["glyph-cpu"], T, C["1"], fill="#0f151e", stroke=TRUNK_BORDER, sw=2)
 
 # ---- column 1: hardware as a vertical list
 hwx, HWW = tx0 + 20, 250
@@ -661,10 +654,6 @@ assert hy0 + 22 + len(T["hw"]) * (TH_ + TG_) <= hy0 + ZH + 6, "hardware list too
 
 S.trunk([(PORTS["sfpp2"], SB), (PORTS["sfpp2"], ty0)], sw=trunk_w("10G"))
 speed_tag(PORTS["sfpp2"] + 10, ty0 - 9, "10G", TRUNK)
-
-kx = KVM[0] + KVM[1] / 2
-S.line([(kx, DY + KVM[2]), (kx, ty0)], MUTED, 2, dash="5 5", cap="butt")
-S.label(kx + 10, (DY + KVM[2] + ty0) / 2 + 5, "HDMI + USB console", MUTED, 12, anchor="start")
 
 # ---- other-VLAN guests (left column inside terra)
 og = T["other_guests"]
@@ -687,18 +676,18 @@ def guest_card(g, x, y, w, h):
 def disk(kind, x, y):
     if kind == "hdd":
         S.rect(x, y, 30, 40, rx=4, fill=DISK, stroke=DISK_EDGE, sw=1.2)
-        S.add(f'<circle cx="{x+15}" cy="{y+16}" r="9" fill="none" stroke="{C["10"]}" stroke-width="1.6"/>'
-              f'<circle cx="{x+15}" cy="{y+16}" r="2" fill="{C["10"]}"/>')
+        S.add(f'<circle cx="{x+15}" cy="{y+16}" r="9" fill="none" stroke="{C["1"]}" stroke-width="1.6"/>'
+              f'<circle cx="{x+15}" cy="{y+16}" r="2" fill="{C["1"]}"/>')
         S.rect(x + 8, y + 31, 14, 3, rx=1, fill=DISK_EDGE, stroke="none", sw=0)
         return 30
     if kind == "ssd":
         S.rect(x, y + 6, 44, 28, rx=3, fill=DISK, stroke=DISK_EDGE, sw=1.2)
-        S.rect(x + 6, y + 12, 20, 16, rx=2, fill=C["10"] + "55", stroke="none", sw=0)
+        S.rect(x + 6, y + 12, 20, 16, rx=2, fill=C["1"] + "55", stroke="none", sw=0)
         S.rect(x + 30, y + 12, 8, 16, rx=1, fill=DISK_EDGE, stroke="none", sw=0)
         return 44
     S.rect(x, y + 10, 96, 20, rx=2, fill=DISK, stroke=DISK_EDGE, sw=1.2)        # nvme
     for k in range(3):
-        S.rect(x + 8 + k * 22, y + 14, 16, 12, rx=1, fill=C["10"] + "55", stroke="none", sw=0)
+        S.rect(x + 8 + k * 22, y + 14, 16, 12, rx=1, fill=C["1"] + "55", stroke="none", sw=0)
     S.rect(x + 88, y + 15, 4, 10, rx=1, fill=BG, stroke="none", sw=0)
     return 96
 
@@ -711,7 +700,7 @@ def pool_box(p, x, y, w, h):
     S.text(x + w - 14, y + 24, p["used"], 12, MUTED, 400, "end")
     bw_ = w - 28
     S.rect(x + 14, y + 34, bw_, 8, rx=4, fill="#253042", stroke="none", sw=0)
-    barc = "#f0883e" if p["pct"] >= p.get("warn", 85) else C["10"]     # nearly full → orange
+    barc = "#f0883e" if p["pct"] >= p.get("warn", 85) else C["1"]     # nearly full → orange
     S.rect(x + 14, y + 34, max(bw_ * p["pct"] / 100, 8), 8, rx=4, fill=barc, stroke="none", sw=0)
     gx0 = x + 14
     for grp in p["groups"]:
@@ -765,9 +754,9 @@ guest_card(og["bliss"], gx, hy + 232, gw, 84)
 zx = gx + gw + 20
 zy = gy
 zw = tx0 + tw0 - 20 - zx
-S.rect(zx, zy, zw, ZH, rx=14, fill=C["20"] + "0d", stroke=C["20"] + "88", sw=1.5)
-S.pill(zx + zw - 14, zy + 16, vlan_tag("20"), C["20"], 10.5, mono=True, h=19, pad=6, anchor="end")   # same as the VM/CT card pills
-S.text(zx + 18, zy + 31, "one unprivileged LXC per service · web apps behind Traefik (CT 149)",
+S.rect(zx, zy, zw, ZH, rx=14, fill=C["40"] + "0d", stroke=C["40"] + "88", sw=1.5)
+S.pill(zx + zw - 14, zy + 16, vlan_tag("40"), C["40"], 10.5, mono=True, h=19, pad=6, anchor="end")   # same as the VM/CT card pills
+S.text(zx + 18, zy + 31, "Kubernetes workloads on Talos · Gateway API HTTPRoutes (*.homelab.yarg.ca)",
        12.5, MUTED, 400)
 
 groups = {g["name"]: g for g in T["dmz_groups"]}
@@ -788,7 +777,7 @@ def docker_badge(x, y):
     S.icon("docker", x - 8.5, y - 8.5, 17)
 
 
-ZONE_VLAN = "20"
+ZONE_VLAN = "40"
 
 
 def chip_ids(g, x, y, w, h):
@@ -861,12 +850,12 @@ def column(i, names):
     assert y <= zy + ZH + 6, f"DMZ column {i} too tall"
 
 
-column(0, ["Edge & security", "Monitoring"])
-column(1, ["Media & photos"])
-column(2, ["Productivity", "Gaming"])
-column(3, ["Dev", "Chat"])
+column(0, ["Core services", "Observability"])
+column(1, ["Media & docs"])
+column(2, ["Finance & automation"])
+column(3, ["Platform"])
 
-# ================================================================ media pipeline (explainer panel, right column above terra)
+# ================================================================ ingress & DNS explainer (right column above terra)
 mp = T["media_pipeline"]
 N = mp["nodes"]
 PX, PY, PW = 1790, iy_ + ih_ + 20, 570
@@ -875,16 +864,16 @@ G_ = 42
 NW = (PW - 28 - 2 * G_) / 3
 NH = 68
 STACK_H = 3 * 46 + 2 * 6
-RA = PY + 98                       # top of the *arr stack (room for title + its label)
-RS = RA + (STACK_H - NH) / 2       # Seerr / Prowlarr (centered on the stack)
-RB = RA + STACK_H + 52             # Jellyfin / qBittorrent
-RC = RB + NH + 40                  # the two TrueNAS shares
+RA = PY + 98                       # top of the gateway stack (room for title + its label)
+RS = RA + (STACK_H - NH) / 2       # AdGuard / External-DNS (centered on the stack)
+RB = RA + STACK_H + 52             # BIND9 / Cilium BGP
+RC = RB + NH + 40                  # the two DNS zones
 SH_ = 64
 SW_ = (PW - 28 - G_) / 2
 PH = RC + SH_ + 16 - PY
 S.rect(PX, PY, PW, PH, rx=14, fill=PANEL, stroke=BORDER, sw=1.4)
-S.text(PX + 20, PY + 32, "Media pipeline", 17, TEXT, 600)
-S.text(PX + 20, PY + 52, "how a request ends up in Jellyfin", 12.5, MUTED, 400)
+S.text(PX + 20, PY + 32, "Ingress & DNS", 17, TEXT, 600)
+S.text(PX + 20, PY + 52, "how a hostname reaches a service", 12.5, MUTED, 400)
 assert PY + PH <= ty0 - TAB - 16, f"pipeline panel overlaps terra: {PY + PH} > {ty0 - TAB - 16}"
 
 
@@ -897,68 +886,67 @@ def node(n, c, y):
     S.rect(x, y, NW, NH, rx=9, fill=CHIP, stroke=BORDER, sw=1)
     S.icon(n["icon"], x + 8, y + 9, 22)
     S.text(x + 35, y + 26, n["name"], 12.5, TEXT, 600)
-    S.text(x + NW - 10, y + 26, f"CT {n['ct']}", 10.5, FAINT, 500, "end", mono=True)
+    S.text(x + NW - 10, y + 26, n["role"], 10.5, FAINT, 500, "end", mono=True)
     S.text(x + NW - 10, y + 46, n["ip"], 10.5, FAINT, 500, "end", mono=True)
     S.text(x + 10, y + 46, n["sub"], 11, MUTED, 400)
-    S.text(x + 10, y + 62, fqdn(n["host"]), 10, LINK, 500, mono=True)
+    S.text(x + 10, y + 62, n.get("url", ""), 10, LINK, 500, mono=True)
 
 
-def arr_node(a, x, y):
+def gw_node(a, x, y):
     S.rect(x, y, NW, 46, rx=8, fill=CHIP, stroke=BORDER, sw=1)
     S.icon(a["icon"], x + 10, y + 7, 20)
     S.text(x + 36, y + 22, a["name"], 13.5, TEXT, 600)
     S.text(x + NW - 10, y + 22, a["ip"], 12, FAINT, 500, "end", mono=True)
-    S.text(x + 10, y + 38, fqdn(a["host"]), 10, LINK, 500, mono=True)
+    S.text(x + 10, y + 38, a.get("url", ""), 10, LINK, 500, mono=True)
 
 
-def share(sh, x, y):
-    """A TrueNAS SMB share, mounted on terra and bind-mounted into the containers."""
-    S.rect(x, y, SW_, SH_, rx=9, fill=C["10"] + "16", stroke=C["10"] + "cc", sw=1.3, dash="5 4")
-    S.icon("truenas", x + 10, y + 10, 22)
+def zone(sh, x, y):
+    """A BIND9 zone kept in sync by External-DNS."""
+    S.rect(x, y, SW_, SH_, rx=9, fill=C["40"] + "16", stroke=C["40"] + "cc", sw=1.3, dash="5 4")
+    S.icon("glyph-dhcp", x + 10, y + 10, 22)
     S.text(x + 40, y + 26, sh["name"], 13.5, TEXT, 600)
-    S.text(x + SW_ - 10, y + 26, "TrueNAS SMB", 10.5, C["10"], 600, "end", mono=True)
+    S.text(x + SW_ - 10, y + 26, "BIND9 zone", 10.5, C["40"], 600, "end", mono=True)
     S.text(x + 10, y + 44, sh["pool"], 11, MUTED, 400)
-    S.text(x + 10, y + 58, "bind mount: SMB ↔ terra ↔ CT", 10, C["10"], 500, mono=True)
+    S.text(x + 10, y + 58, sh.get("note", "RFC 2136 · TSIG"), 10, C["40"], 500, mono=True)
 
 
-node(N["seerr"], 0, RS)
-node(N["prowlarr"], 2, RS)
+node(N["dns"], 0, RS)
+node(N["extdns"], 2, RS)
 S.rect(node_x(1) - 6, RA - 6, NW + 12, STACK_H + 12, rx=12, fill="none", stroke="#3a475a", sw=1.2, dash="3 3")
-lx0 = node_x(1) + 2                                   # group label: Docker whale + "CT 154"
-S.rect(lx0, RA - 17, 58, 22, rx=5, fill=CARD_BG, stroke=CARD_BG, sw=0)
-S.text(lx0 + 6, RA - 1, "CT 154", 11.5, "#c3cdd9", 600, mono=True)
-for k, a in enumerate(mp["arrs"]):
-    arr_node(a, node_x(1), RA + k * 52)
-node(N["jellyfin"], 0, RB)
-node(N["qbit"], 2, RB)
+lx0 = node_x(1) + 2
+S.rect(lx0, RA - 17, 86, 22, rx=5, fill=CARD_BG, stroke=CARD_BG, sw=0)
+S.text(lx0 + 6, RA - 1, "Gateways", 11.5, "#c3cdd9", 600, mono=True)
+for k, a in enumerate(mp["gateways"]):
+    gw_node(a, node_x(1), RA + k * 52)
+node(N["bind"], 0, RB)
+node(N["bgp"], 2, RB)
 mx, tx_ = PX + 14, PX + 14 + SW_ + G_
-share(mp["shares"]["media"], mx, RC)
-share(mp["shares"]["torrents"], tx_, RC)
+zone(mp["zones"]["homelab"], mx, RC)
+zone(mp["zones"]["alpha"], tx_, RC)
 
 midS = RS + NH / 2
 S.arrow([(node_x(0) + NW + 4, midS), (node_x(1) - 10, midS)])
-S.label(node_x(0) + NW + G_ / 2 - 3, midS - 8, "request", MUTED, 11, bg=CARD_BG)
+S.label(node_x(0) + NW + G_ / 2 - 3, midS - 8, "forwarder", MUTED, 11, bg=CARD_BG)
 S.arrow([(node_x(2) - 4, midS), (node_x(1) + NW + 10, midS)])
-S.label(node_x(1) + NW + G_ / 2 + 3, midS - 8, "indexers", MUTED, 11, bg=CARD_BG)
+S.label(node_x(1) + NW + G_ / 2 + 3, midS - 8, "A records", MUTED, 11, bg=CARD_BG)
 qx = node_x(2) + NW / 2
-yr = RA + 2 * 52 + 23                       # Radarr row
+yr = RA + 2 * 52 + 23
 S.arrow([(node_x(1) + NW + 8, yr), (qx, yr), (qx, RB - 5)])
-S.label((node_x(1) + NW + qx) / 2 + 4, yr - 8, "torrent", MUTED, 11, bg=CARD_BG)
-# the *arr apps pick finished files up from Torrents and copy them (renamed, sorted) into Media
+S.label((node_x(1) + NW + qx) / 2 + 4, yr - 8, "VIP /32", MUTED, 11, bg=CARD_BG)
 ax1, ax2 = node_x(1) + 24, node_x(1) + NW - 24
 S.arrow([(ax1, RA + STACK_H + 7), (ax1, RC - 5)])
-S.text(ax1 + 8, RB + 30, "copy +", 11, MUTED, 500)
-S.text(ax1 + 8, RB + 44, "rename", 11, MUTED, 500)
+S.text(ax1 + 8, RB + 30, "dynamic", 11, MUTED, 500)
+S.text(ax1 + 8, RB + 44, "records", 11, MUTED, 500)
 S.arrow([(ax2, RC - 2), (ax2, RA + STACK_H + 10)])
-S.text(ax2 + 8, RB + 30, "pick up", 11, MUTED, 500)
-S.text(ax2 + 8, RB + 44, "when done", 11, MUTED, 500)
+S.text(ax2 + 8, RB + 30, "resolves", 11, MUTED, 500)
+S.text(ax2 + 8, RB + 44, "hosts", 11, MUTED, 500)
 jx = node_x(0) + NW / 2
 S.arrow([(jx, RB - 2), (jx, RS + NH + 5)], dash="4 4")
-S.text(jx + 10, (RS + NH + RB) / 2 + 4, "available", 11, MUTED, 500)
+S.text(jx + 10, (RS + NH + RB) / 2 + 4, "upstream", 11, MUTED, 500)
 S.arrow([(qx, RB + NH + 2), (qx, RC - 5)])
-S.text(qx + 10, (RB + NH + RC) / 2 + 4, "download", 11, MUTED, 500)
+S.text(qx + 10, (RB + NH + RC) / 2 + 4, "BGP peer", 11, MUTED, 500)
 S.arrow([(jx, RC - 2), (jx, RB + NH + 5)])
-S.text(jx + 10, (RB + NH + RC) / 2 + 4, "library", 11, MUTED, 500)
+S.text(jx + 10, (RB + NH + RC) / 2 + 4, "authority", 11, MUTED, 500)
 
 # ---------------------------------------------------------------- canvas height
 # the canvas grows with the content: lowest panel + margin

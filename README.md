@@ -24,38 +24,34 @@ The script behind the network diagram of my homelab that I posted on r/homelab. 
 
 - `inventory.yaml` holds everything the picture shows: VLANs, devices, switch ports, port forwards, hardware, containers, pools.
 - `build.py` draws the diagram as SVG with hand-placed coordinates, embeds the icons and converts it to PNG with `rsvg-convert`. Text widths for a few labels are measured with Pillow from the real font, so tabs and badges fit their text.
-- **Redaction:** by default the real domain is replaced with `redacted.com` and SSIDs get generic names, so the PNG can be posted publicly. `python3 build.py --unredacted` renders a private version with the real values from `inventory.yaml`.
+- **Redaction:** by default the real domain is replaced with `redacted.com` and SSIDs get generic names, so the PNG can be posted publicly. `bazelisk run //:build -- --unredacted` renders a private version with the real values from `inventory.yaml`.
 
 ## Requirements
 
-- Python 3.11+ with **PyYAML** and **Pillow** (Pillow is optional, but makes label widths exact). Both are declared in `pyproject.toml`, so [uv](https://docs.astral.sh/uv/) installs them for you — see below.
+- **Bazelisk**; it uses the Bazel version pinned in `.bazelversion` and manages Python dependencies through `rules_python`.
 - **rsvg-convert** (librsvg) for the PNG
 - the fonts **Fira Sans** and **Fira Code** installed (found via fontconfig)
 
-On Arch/CachyOS: `pacman -S python-yaml python-pillow librsvg ttf-fira-sans ttf-fira-code`
-On Debian/Ubuntu: `apt install python3-yaml python3-pil librsvg2-bin fonts-firacode` plus Fira Sans
-On macOS: `brew install librsvg`, then install the Fira fonts from [mozilla/Fira](https://github.com/mozilla/Fira) (e.g. `brew install --cask font-fira-code font-fira-sans`, if your Homebrew has them).
+On Arch/CachyOS: `pacman -S bazelisk librsvg ttf-fira-sans ttf-fira-code`
+On Debian/Ubuntu: install Bazelisk, then `apt install librsvg2-bin fonts-firacode` plus Fira Sans
+On macOS: `brew install bazelisk librsvg`, then install the Fira fonts from [mozilla/Fira](https://github.com/mozilla/Fira) (e.g. `brew install --cask font-fira-code font-fira-sans`, if your Homebrew has them).
 
 ## Usage
 
-With [uv](https://docs.astral.sh/uv/) (creates `.venv` and installs the pinned dependencies from `uv.lock`):
-
 ```bash
-uv sync                         # once: create .venv, install PyYAML + Pillow
-uv run fetch_icons.py           # downloads the service icons into icons/ (once)
-uv run build.py                 # → out/homelab.svg + out/homelab.png (redacted)
-uv run build.py --unredacted    # → out/homelab-unredacted.svg + .png
+bazelisk run //:fetch_icons                 # optional: refresh service icons in icons/
+bazelisk run //:build                       # → out/homelab.svg + out/homelab.png (redacted)
+bazelisk run //:build -- --unredacted       # → out/homelab-unredacted.svg + .png
 ```
 
-Or with a plain Python install of PyYAML:
+When consumed from another Bazel workspace through the `homelab_diagram` module, run the consuming target instead:
 
 ```bash
-python3 fetch_icons.py          # downloads the service icons into icons/ (once)
-python3 build.py                # → out/homelab.svg + out/homelab.png (redacted)
-python3 build.py --unredacted   # → out/homelab-unredacted.svg + .png
+bazelisk run //:diagram -- --inventory inventory.yaml
+bazelisk run //:diagram -- --inventory inventory.yaml --unredacted
 ```
 
-The service icons are **not** in this repo, `fetch_icons.py` downloads them from [homarr-labs/dashboard-icons](https://github.com/homarr-labs/dashboard-icons). Only my own small glyphs (`icons/glyph-*.svg`: CPU, RAM, SSD, …) are included.
+The service icons are included in this fork and can be refreshed with `bazelisk run //:fetch_icons`; they originate from [homarr-labs/dashboard-icons](https://github.com/homarr-labs/dashboard-icons). Only my own small glyphs (`icons/glyph-*.svg`: CPU, RAM, SSD, …) are included.
 
 ## Making it your own
 

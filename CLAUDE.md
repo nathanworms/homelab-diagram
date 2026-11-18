@@ -53,8 +53,8 @@ Useful read-only commands if you have access (ask first): Proxmox `pct list`, `q
 
 1. Write `inventory.yaml` for their lab (keep the schema; extend it when needed and teach `build.py` the new fields).
 2. Adapt `build.py`: decide which panels exist, adjust the hardcoded positions above, remove sections they don't need.
-3. `python3 fetch_icons.py` (add new icons to `ICON_MAP` first: local name → name in [dashboard-icons](https://github.com/homarr-labs/dashboard-icons); dark icons need a `-light` variant or an entry in `RECOLOR`).
-4. `python3 build.py`, then **look at `out/homelab.png` yourself** before showing it. Zoom into busy areas: `magick out/homelab.png -crop 1400x600+X+Y +repage -resize 70% /tmp/crop.png` (X/Y in PNG pixels = SVG coordinates × 1.6). Look for overlapping text, cables crossing cards, text running out of boxes, empty gaps.
+3. `bazelisk run //:fetch_icons` (add new icons to `ICON_MAP` first: local name → name in [dashboard-icons](https://github.com/homarr-labs/dashboard-icons); dark icons need a `-light` variant or an entry in `RECOLOR`).
+4. `bazelisk run //:build`, then **look at `out/homelab.png` yourself** before showing it. Zoom into busy areas: `magick out/homelab.png -crop 1400x600+X+Y +repage -resize 70% /tmp/crop.png` (X/Y in PNG pixels = SVG coordinates × 1.6). Look for overlapping text, cables crossing cards, text running out of boxes, empty gaps.
 5. Show the user, take feedback, change, re-render. Expect many small rounds, that's normal.
 6. Before they share it: render without `--unredacted` and `grep` `out/homelab.svg` for their real domain, SSID names and anything private.
 
@@ -94,5 +94,5 @@ Pool disk groups that don't fit next to each other wrap to a second row; the ass
 - Fonts: **Fira Sans** and **Fira Code** must be installed, otherwise rsvg falls back and every width calculation is off.
 - jsDelivr sometimes refuses single icons with 403; `fetch_icons.py` falls back to raw GitHub.
 - When content grows, grow the section heights (`ZH`, pool boxes, …); the asserts tell you where. The canvas height follows on its own.
-- `python3 build.py --inventory other.yaml` renders a different inventory file, handy for trying changes without touching `inventory.yaml`.
+- `bazelisk run //:build -- --inventory other.yaml` renders a different inventory file, handy for trying changes without touching `inventory.yaml`.
 - A device whose cable enters from above must have its entry point right of its folder tab (see how `KVM_IN`/`AP_IN` use `tab_width()`).

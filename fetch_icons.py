@@ -7,12 +7,13 @@ are already in icons/.
 
 Usage: python3 fetch_icons.py
 """
+import os
 import pathlib
 import shutil
 import time
 import urllib.request
 
-ROOT = pathlib.Path(__file__).resolve().parent
+ROOT = pathlib.Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY", pathlib.Path(__file__).resolve().parent))
 ICONS = ROOT / "icons"
 # tried in order; raw GitHub is the fallback when jsDelivr refuses a file
 SOURCES = [
